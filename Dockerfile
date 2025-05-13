@@ -1,6 +1,7 @@
 # 1. 베이스 이미지 선택
 FROM python:3.10
 
+
 # 2. 작업 디렉토리 지정
 WORKDIR /app
 ENV FLASK_APP=nogorok.py
