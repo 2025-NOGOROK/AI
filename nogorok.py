@@ -4,6 +4,11 @@ import os
 
 app = Flask(__name__)
 
+# 루트 경로 추가 ✅
+@app.route('/')
+def home():
+    return "Flask 추천 서버가 실행 중입니다. POST 요청을 /recommend로 보내주세요."
+
 def load_recommendations():
     current_dir = os.path.dirname(os.path.abspath(__file__))
     csv_path = os.path.join(current_dir, "short.csv")
