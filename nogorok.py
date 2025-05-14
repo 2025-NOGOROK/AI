@@ -77,4 +77,5 @@ def recommend():
     return jsonify(final_recommendations)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5001, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)  # 5000으로 통일
+
