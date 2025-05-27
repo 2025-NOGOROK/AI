@@ -81,6 +81,9 @@ def recommend():
 
     return jsonify(final_recommendations)
 
+###########################################위 코드는 수정하지마시오#########################################################
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)  # 5000으로 통일
 
