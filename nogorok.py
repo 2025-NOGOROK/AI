@@ -84,6 +84,15 @@ def recommend():
 ###########################################위 코드는 수정하지마시오#########################################################
 
 
+@app.route('/vector-recommend', methods=['POST'])
+def vector_recommend():
+    data = request.json
+    print("받은 데이터:", data)
+    user_label = data.get('label', '')
+    user_title = data.get('title', '')
+    stress = float(data.get('stress', 0.0))  # 최근 스트레스 값
+    return jsonify({"result": "ok"})
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)  # 5000으로 통일
 
