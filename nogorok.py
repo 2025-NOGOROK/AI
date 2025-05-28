@@ -1,6 +1,8 @@
 from flask import Flask, request, jsonify
 import pandas as pd
 import os
+import numpy as np
+import math
 
 app = Flask(__name__)
 
@@ -83,16 +85,65 @@ def recommend():
 
 ###########################################위 코드는 수정하지마시오#########################################################
 
+# 1. long.csv 로드
+df = pd.read_csv("long.csv")
+
+def safe_json(obj):
+    # NaN, None, nan 등은 모두 null로
+    if isinstance(obj, float) and math.isnan(obj):
+        return None
+    return obj
+
+# 2. 벡터화(임베딩) 함수 예시 (실제 서비스에서는 더 정교한 임베딩 사용)
+def simple_vector(text):
+    return np.array([sum(ord(c) for c in str(text))])
+
+def cosine_similarity(a, b):
+    if np.linalg.norm(a) == 0 or np.linalg.norm(b) == 0:
+        return 0
+    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
 
 @app.route('/vector-recommend', methods=['POST'])
 def vector_recommend():
     data = request.json
-    print("받은 데이터:", data)
-    user_label = data.get('label', '')
     user_title = data.get('title', '')
-    stress = float(data.get('stress', 0.0))  # 최근 스트레스 값
-    return jsonify({"result": "ok"})
+    user_label = data.get('label', '')
+    stress = float(data.get('stress', 0.0))
 
+    # 1) 스트레스 80 이상: 특정 라벨만 필터링
+    if stress >= 80:
+        candidates = df[df['분류'].isin(["클래식", "국악", "전시/미술", "무용"])]
+        user_vec = simple_vector(user_title)
+    else:
+        # 2) 80 미만: 전체에서 라벨+타이틀 벡터화
+        candidates = df
+        user_vec = simple_vector(f"{user_label} {user_title}")
+
+    # 후보별 유사도 계산
+    candidates = candidates.copy()
+    candidates['sim'] = candidates['공연/행사명'].apply(
+        lambda x: cosine_similarity(user_vec, simple_vector(x))
+    )
+
+    # 유사도 내림차순 정렬 후 상위 2개 추출
+    top2 = candidates.sort_values(by='sim', ascending=False).head(2)
+
+    # 추천 결과 포맷 (Spring DTO와 맞추기)
+    results = []
+    for _, row in top2.iterrows():
+        results.append({
+            "title": row['공연/행사명'],
+            "label": row['분류'],
+            "description": row.get('프로그램소개', '')  # 설명이 없으면 빈 문자열
+        })
+
+    return jsonify(results)
+
+
+
+
+
+################################################아래 코드 수정 금지#######################################################################
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)  # 5000으로 통일
 
