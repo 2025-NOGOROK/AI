@@ -134,7 +134,7 @@ def vector_recommend():
         results.append({
             "title": row['공연/행사명'],
             "label": row['분류'],
-            "description": row.get('프로그램소개', '')  # 설명이 없으면 빈 문자열
+            "description": safe_json(row.get('프로그램소개', ''))
         })
 
     return jsonify(results)
