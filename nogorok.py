@@ -3,6 +3,8 @@ import pandas as pd
 import os
 import numpy as np
 import math
+from sentence_transformers import SentenceTransformer
+from geopy.distance import geodesic
 
 app = Flask(__name__)
 
@@ -88,20 +90,41 @@ def recommend():
 # 1. long.csv 로드
 df = pd.read_csv("long.csv")
 
+# 2. 임베딩 모델 로드
+model = SentenceTransformer('jhgan/ko-sroberta-multitask')
+
 def safe_json(obj):
     # NaN, None, nan 등은 모두 null로
     if isinstance(obj, float) and math.isnan(obj):
         return None
     return obj
 
-# 2. 벡터화(임베딩) 함수 예시 (실제 서비스에서는 더 정교한 임베딩 사용)
-def simple_vector(text):
-    return np.array([sum(ord(c) for c in str(text))])
-
 def cosine_similarity(a, b):
     if np.linalg.norm(a) == 0 or np.linalg.norm(b) == 0:
         return 0
     return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+
+def get_event_text(row):
+    # 설명이 있으면 행사명+설명, 없으면 행사명만
+    if pd.notnull(row.get('프로그램소개')):
+        return f"{row['공연/행사명']} {row['프로그램소개']}"
+    else:
+        return row['공연/행사명']
+
+def calc_score(sim, event_lat, event_lon, user_lat, user_lon, is_free):
+    # 거리 점수 (가까울수록 높게)
+    if user_lat and user_lon and not pd.isnull(event_lat) and not pd.isnull(event_lon):
+        try:
+            distance = geodesic((user_lat, user_lon), (event_lat, event_lon)).km
+            distance_score = max(0, 1 - distance/10)  # 10km 이내면 1~0
+        except:
+            distance_score = 0.5
+    else:
+        distance_score = 0.5  # 위치 정보 없으면 중간값
+    # 가격 점수 (무료면 가산점)
+    price_score = 1.0 if is_free else 0.7
+    # 최종 점수 (가중치 합)
+    return 0.7*sim + 0.2*distance_score + 0.1*price_score
 
 @app.route('/vector-recommend', methods=['POST'])
 def vector_recommend():
@@ -109,35 +132,43 @@ def vector_recommend():
     user_title = data.get('title', '')
     user_label = data.get('label', '')
     stress = float(data.get('stress', 0.0))
+    user_lat = data.get('latitude')  # 사용자의 위도 (옵션)
+    user_lon = data.get('longitude') # 사용자의 경도 (옵션)
 
     # 1) 스트레스 80 이상: 특정 라벨만 필터링
     if stress >= 80:
         candidates = df[df['분류'].isin(["클래식", "국악", "전시/미술", "무용"])]
-        user_vec = simple_vector(user_title)
+        user_vec = model.encode([user_title])[0]
     else:
-        # 2) 80 미만: 전체에서 라벨+타이틀 벡터화
+        # 2) 80 미만: 전체에서 라벨+타이틀 임베딩
         candidates = df
-        user_vec = simple_vector(f"{user_label} {user_title}")
+        user_vec = model.encode([f"{user_label} {user_title}"])[0]
 
-    # 후보별 유사도 계산
-    candidates = candidates.copy()
-    candidates['sim'] = candidates['공연/행사명'].apply(
-        lambda x: cosine_similarity(user_vec, simple_vector(x))
-    )
-
-    # 유사도 내림차순 정렬 후 상위 2개 추출
-    top2 = candidates.sort_values(by='sim', ascending=False).head(2)
-
-    # 추천 결과 포맷 (Spring DTO와 맞추기)
     results = []
-    for _, row in top2.iterrows():
-        results.append({
+    for _, row in candidates.iterrows():
+        event_text = get_event_text(row)
+        event_vec = model.encode([event_text])[0]
+        sim = cosine_similarity(user_vec, event_vec)
+        event_lat = row.get('위도(Y좌표)')
+        event_lon = row.get('경도(X좌표)')
+        is_free = (row.get('유무료') == '무료')
+        score = calc_score(sim, event_lat, event_lon, user_lat, user_lon, is_free)
+        results.append((score, row))
+
+    # 점수 내림차순 정렬 후 상위 2개 추출
+    top2 = sorted(results, key=lambda x: x[0], reverse=True)[:2]
+
+    # 추천 결과 포맷
+    output = []
+    for score, row in top2:
+        output.append({
             "title": row['공연/행사명'],
             "label": row['분류'],
             "description": safe_json(row.get('프로그램소개', ''))
+
         })
 
-    return jsonify(results)
+    return jsonify(output)
 
 
 
