@@ -5,6 +5,7 @@ import numpy as np
 import math
 from sentence_transformers import SentenceTransformer
 from geopy.distance import geodesic
+from datetime import datetime, date
 
 app = Flask(__name__)
 
@@ -94,7 +95,6 @@ df = pd.read_csv("long.csv")
 model = SentenceTransformer('jhgan/ko-sroberta-multitask')
 
 def safe_json(obj):
-    # NaN, None, nan 등은 모두 null로
     if isinstance(obj, float) and math.isnan(obj):
         return None
     return obj
@@ -105,26 +105,36 @@ def cosine_similarity(a, b):
     return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
 
 def get_event_text(row):
-    # 설명이 있으면 행사명+설명, 없으면 행사명만
     if pd.notnull(row.get('프로그램소개')):
         return f"{row['공연/행사명']} {row['프로그램소개']}"
     else:
         return row['공연/행사명']
 
 def calc_score(sim, event_lat, event_lon, user_lat, user_lon, is_free):
-    # 거리 점수 (가까울수록 높게)
     if user_lat and user_lon and not pd.isnull(event_lat) and not pd.isnull(event_lon):
         try:
             distance = geodesic((user_lat, user_lon), (event_lat, event_lon)).km
-            distance_score = max(0, 1 - distance/10)  # 10km 이내면 1~0
+            distance_score = max(0, 1 - distance/10)
         except:
             distance_score = 0.5
     else:
-        distance_score = 0.5  # 위치 정보 없으면 중간값
-    # 가격 점수 (무료면 가산점)
+        distance_score = 0.5
     price_score = 1.0 if is_free else 0.7
-    # 최종 점수 (가중치 합)
     return 0.7*sim + 0.2*distance_score + 0.1*price_score
+
+def is_today_event(row):
+    try:
+        today = date.today()
+        start_str = str(row.get('시작일', '')).strip()
+        end_str = str(row.get('종료일', '')).strip()
+        # '2025/06/02 0:00' 같은 형식 처리
+        start_date = datetime.strptime(start_str, '%Y/%m/%d %H:%M').date()
+        end_date = datetime.strptime(end_str, '%Y/%m/%d %H:%M').date()
+        return start_date <= today <= end_date
+    except Exception as e:
+        print(f"날짜 파싱 오류: {e}, 행 데이터: {row}")
+        return False
+
 
 @app.route('/vector-recommend', methods=['POST'])
 def vector_recommend():
@@ -132,16 +142,18 @@ def vector_recommend():
     user_title = data.get('title', '')
     user_label = data.get('label', '')
     stress = float(data.get('stress', 0.0))
-    user_lat = data.get('latitude')  # 사용자의 위도 (옵션)
-    user_lon = data.get('longitude') # 사용자의 경도 (옵션)
+    user_lat = data.get('latitude')
+    user_lon = data.get('longitude')
 
-    # 1) 스트레스 80 이상: 특정 라벨만 필터링
+    # ★ 오늘 행사만 필터링
+    today_df = df[df.apply(is_today_event, axis=1)]
+    print(f"오늘 행사 개수: {len(today_df)}")  # 로깅 추가
+
     if stress >= 80:
-        candidates = df[df['분류'].isin(["클래식", "국악", "전시/미술", "무용"])]
+        candidates = today_df[today_df['분류'].isin(["클래식", "국악", "전시/미술", "무용"])]
         user_vec = model.encode([user_title])[0]
     else:
-        # 2) 80 미만: 전체에서 라벨+타이틀 임베딩
-        candidates = df
+        candidates = today_df
         user_vec = model.encode([f"{user_label} {user_title}"])[0]
 
     results = []
@@ -155,20 +167,19 @@ def vector_recommend():
         score = calc_score(sim, event_lat, event_lon, user_lat, user_lon, is_free)
         results.append((score, row))
 
-    # 점수 내림차순 정렬 후 상위 2개 추출
     top2 = sorted(results, key=lambda x: x[0], reverse=True)[:2]
 
-    # 추천 결과 포맷
     output = []
     for score, row in top2:
         output.append({
             "title": row['공연/행사명'],
             "label": row['분류'],
-            "description": safe_json(row.get('프로그램소개', ''))
-
+            "description": safe_json(row.get('장소', '')),
+            "program_intro": safe_json(row.get('프로그램소개', ''))
         })
 
     return jsonify(output)
+
 
 
 
