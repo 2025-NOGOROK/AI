@@ -3,5 +3,8 @@ pandas==2.2.0
 numpy==1.26.4
 sentence-transformers==2.5.1
 geopy==2.4.1
-torch      # sentence-transformers 내부적으로 필요
-scipy      # sentence-transformers 내부적으로 필요
+torch>=1.13.0         # sentence-transformers에서 사용
+scipy>=1.7.0          # sentence-transformers에서 사용
+transformers>=4.30.0  # sentence-transformers에서 사용됨
+tqdm                  # progress bar, sentence-transformers 종속성
+scikit-learn          # cosine similarity 등 내부 연산에 필요할 수 있음
