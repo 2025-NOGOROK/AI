@@ -10,7 +10,7 @@ COPY requirements.txt .
 RUN pip install --upgrade pip && pip install -r requirements.txt
 
 # 4. 소스 코드 및 데이터 파일 복사
-COPY nogorok.py short.csv ./
+COPY nogorok.py short.csv long.csv ./
 
 # 5. 서버 실행 (포트 통일)
 CMD ["flask", "run", "--host=0.0.0.0", "--port=5000"]
