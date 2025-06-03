@@ -92,7 +92,7 @@ def recommend():
 df = pd.read_csv("long.csv")
 
 # 2. 임베딩 모델 로드
-model = SentenceTransformer('jhgan/ko-sroberta-multitask')
+model = SentenceTransformer('snunlp/KR-SBERT-V40K-klueNLI-augSTS')
 
 def safe_json(obj):
     if isinstance(obj, float) and math.isnan(obj):
