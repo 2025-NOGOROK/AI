@@ -165,9 +165,18 @@ def vector_recommend():
         event_lon = row.get('경도(X좌표)')
         is_free = (row.get('유무료') == '무료')
         score = calc_score(sim, event_lat, event_lon, user_lat, user_lon, is_free)
+        print(f"[추천] 점수: {score:.4f}, 제목: {row['공연/행사명']}, 장소: {row.get('장소')}")
         results.append((score, row))
 
     top2 = sorted(results, key=lambda x: x[0], reverse=True)[:2]
+
+    print(f"user_title: {user_title}")
+    print(f"user_label: {user_label}")
+    print(f"stress: {stress}")
+    print(f"user_lat: {user_lat}, user_lon: {user_lon}")
+    print(f"추천 후보 개수: {len(candidates)}")
+    print(f"유사도 계산된 결과 개수: {len(results)}")
+
 
     output = []
     for score, row in top2:
