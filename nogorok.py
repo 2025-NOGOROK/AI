@@ -9,7 +9,7 @@ from datetime import datetime, date
 
 app = Flask(__name__)
 
-# 루트 경로 추가 ✅
+# 루트 경로 추가
 @app.route('/')
 def home():
     return "Flask 추천 서버가 실행 중입니다. POST 요청을 /recommend로 보내주세요."
@@ -22,6 +22,13 @@ def load_recommendations():
     except Exception as e:
         print(f"Error: {e}")
         return None
+
+    # ✅ "추천 활동"으로 시작하는 모든 컬럼 자동 수집 (추천 활동 1~N 전부)
+    rec_cols = [c for c in df.columns if str(c).strip().startswith("추천 활동")]
+    if not rec_cols:
+        print("[warn] '추천 활동*' 컬럼이 없습니다.")
+        return None
+
     recommendation_map = {}
     for _, row in df.iterrows():
         key = (
@@ -31,11 +38,15 @@ def load_recommendations():
             str(row["혼자/함께"]).strip(),
             str(row["감각유형"]).strip()
         )
-        recommendation_map[key] = [
-            str(row["추천 활동 1"]),
-            str(row["추천 활동 2"]),
-            str(row["추천 활동 3"])
-        ]
+        # ✅ NaN/빈칸 제거하고 전부 담기
+        recs = []
+        for c in rec_cols:
+            val = row.get(c)
+            if pd.notnull(val):
+                s = str(val).strip()
+                if s:
+                    recs.append(s)
+        recommendation_map[key] = recs
     return recommendation_map
 
 recommendation_map = load_recommendations()
@@ -45,7 +56,7 @@ def recommend():
     if recommendation_map is None:
         return jsonify({"error": "추천 데이터가 없습니다."}), 500
 
-    data = request.json
+    data = request.json or {}
 
     # Java에서 Boolean이 올 경우 문자열로 변환
     change = data.get("change")
@@ -57,17 +68,19 @@ def recommend():
         change = str(change).strip()
 
     key = (
-        str(data.get("schedule", "")).strip(),
-        change,
-        str(data.get("time", "")).strip(),
-        str(data.get("social", "")).strip(),
-        str(data.get("sensory", "")).strip()
+        str(data.get("schedule", "")).strip(),  # "루즈"/"타이트" (한글 그대로)
+        change,                                  # "O"/"X"
+        str(data.get("time", "")).strip(),       # "아침"/"저녁"
+        str(data.get("social", "")).strip(),     # "혼자"/"함께"
+        str(data.get("sensory", "")).strip()     # "감각유형"
     )
 
-    user_methods = data.get("user_methods", [])
-    # user_methods가 None이면 빈 리스트로
+    user_methods = data.get("user_methods")
     if user_methods is None:
         user_methods = []
+    else:
+        # 문자열 공백/중복 정리
+        user_methods = [s.strip() for s in user_methods if isinstance(s, str) and s.strip()]
 
     stress_input = data.get("stress_input", "X")
     if isinstance(stress_input, bool):
@@ -75,14 +88,18 @@ def recommend():
     else:
         stress_input = str(stress_input).strip().upper()
 
-    default_recommendations = recommendation_map.get(key, ["추천 활동이 없습니다."])
-
+    defaults = recommendation_map.get(key, [])
+    # ✅ 개수 제한 없음
     if stress_input == "O":
-        # 중복 제거, 최대 3개
-        combined = user_methods + [act for act in default_recommendations if act not in user_methods]
-        final_recommendations = combined[:3]
+        seen = set()
+        combined = []
+        for a in user_methods + defaults:
+            if a and a not in seen:
+                seen.add(a)
+                combined.append(a)
+        final_recommendations = combined if combined else ["추천 활동이 없습니다."]
     else:
-        final_recommendations = default_recommendations
+        final_recommendations = defaults if defaults else ["추천 활동이 없습니다."]
 
     return jsonify(final_recommendations)
 
